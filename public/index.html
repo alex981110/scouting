@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scouting de baloncesto</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mu:#6b6a64;--bd:#e2e0d8;--ac:#d9531e;--ac2:#fbe9e0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#212120;--tx:#f1efe8;--mu:#a3a198;--bd:#37362f;--ac:#ff7a45;--ac2:#3a2519}}
+:root[data-theme="dark"]{--bg:#161615;--card:#212120;--tx:#f1efe8;--mu:#a3a198;--bd:#37362f;--ac:#ff7a45;--ac2:#3a2519}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:28px 0 10px}p.s{color:var(--mu);margin:0 0 16px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+.btn{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
+.btn.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd)}.btn:disabled{opacity:.45;cursor:not-allowed}
+select,input{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:9px;font:inherit}
+.note{background:var(--ac2);border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.card h3{margin:0;font-size:16px}.card .t{color:var(--mu);font-size:12px}.rk{color:var(--ac);font-weight:700}
+.tag{display:inline-block;background:var(--ac2);color:var(--ac);border-radius:99px;padding:1px 9px;font-size:12px;margin:6px 4px 0 0;font-weight:600}
+.kp{display:flex;gap:14px;margin-top:8px;font-size:13px;color:var(--mu)}.kp b{display:block;color:var(--tx);font-size:16px}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--bd)}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th{color:var(--mu);font-weight:600;cursor:pointer;position:sticky;top:0;background:var(--card)}
+#files{color:var(--mu);font-size:13px}
+</style></head><body><main>
+<h1>Scouting de baloncesto</h1>
+<p class="s">Sube uno o varios Excel de estadísticas (formato Federación de Baloncesto de Madrid). Se acumulan por jugador y se genera el informe.</p>
+<div class="bar">
+<label class="btn sec" for="f">Subir Excel(s)</label><input id="f" type="file" accept=".xlsx,.xls" multiple hidden>
+<select id="tm"></select><select id="fm"><option value="">Sin filtro</option><option value="mpp">Juegan más (min/partido desde)</option><option value="ppp">Meten más (pts/partido desde)</option></select><input id="fv" type="number" min="0" step="1" value="10" style="width:72px" aria-label="Valor mínimo">
+<button class="btn" id="ex">Exportar Excel</button><button class="btn sec" id="rs">Limpiar</button>
+</div>
+<div id="files"></div><div id="warn"></div>
+<h2>Jugadores a tener en cuenta</h2><div class="grid" id="top"></div>
+<h2>Estadísticas acumuladas</h2><div class="tw"><table id="tb"></table></div>
+</main>
+<script>
+let matches=[],rows=[],sortK='idx',sortD=-1,dl=true;
+const $=s=>document.getElementById(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>parseFloat(String(v).replace(',','.'))||0;
+const ai=s=>{const [a,b]=String(s||'0/0').split('/');return [num(a),num(b)]};
+const mins=s=>{const [m,c]=String(s||'0:0').split(':');return num(m)+num(c)/60};
+const f1=x=>(Math.round(x*10)/10).toFixed(1);
+function parse(wb,name){const out=[];
+ for(const sn of wb.SheetNames){const r=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:false});
+  const t=r.find(x=>/^Estad[ií]sticas\s*-/.test(String(x[0])));const label=t?String(t[0]).replace(/^Estad[ií]sticas\s*-\s*/,'').split(' - ')[0]:name;
+  for(let i=0;i<r.length;i++){if(!r[i][0]||r[i][1]||String(r[i][0])==='TOTALES')continue;
+   const k=r.findIndex((x,ix)=>ix>i&&ix<=i+3&&x[4]==='TC 2P');if(k<0)continue;
+   let j=r.findIndex((x,ix)=>ix>k&&x[0]==='Num.')+1;if(!j)continue;
+   for(;j<r.length&&String(r[j][1]).trim()!=='TOTALES';j++){const x=r[j];if(!String(x[1]).trim())continue;
+    out.push({team:String(r[i][0]).trim(),match:label,n:x[0],name:String(x[1]).replace(/\s+/g,' ').trim(),min:mins(x[2]),pts:num(x[3]),t2:ai(x[4]),t3:ai(x[6]),tl:ai(x[8]),reb:num(x[12]),ast:num(x[13]),rec:num(x[14]),per:num(x[15]),tap:num(x[16]),fc:num(x[18]),fr:num(x[19]),val:num(x[20]),pm:num(x[21])});}}}
+ return out}
+function aggregate(){const m=new Map();
+ for(const x of matches){const k=x.team+'|'+x.name;let p=m.get(k);
+  if(!p)m.set(k,p={team:x.team,name:x.name,n:x.n,pj:0,min:0,pts:0,m2:0,m3:0,a3:0,mtl:0,atl:0,reb:0,ast:0,rec:0,per:0,tap:0,fc:0,fr:0,val:0,pm:0});
+  if(x.min>0)p.pj++;p.min+=x.min;p.pts+=x.pts;p.m2+=x.t2[0];p.m3+=x.t3[0];p.a3+=x.t3[1];p.mtl+=x.tl[0];p.atl+=x.tl[1];
+  for(const c of['reb','ast','rec','per','tap','fc','fr','val','pm'])p[c]+=x[c];}
+ rows=[...m.values()].filter(p=>p.pj>0).map(p=>{const g=p.pj;
+  p.ppp=p.pts/g;p.mpp=p.min/g;p.vpp=p.val/g;p.pmpp=p.pm/g;p.p20=p.min?p.pts/p.min*20:0;p.pctTL=p.atl?p.mtl/p.atl*100:0;p.m3pp=p.m3/g;p.fcpp=p.fc/g;
+  p.idx=p.ppp+p.vpp+0.25*p.pmpp;return p});
+ const bt={};rows.forEach(p=>(bt[p.team]=bt[p.team]||[]).push(p));
+ for(const t in bt){const l=bt[t].sort((a,b)=>b.ppp-a.ppp);l.forEach((p,i)=>p.rkPts=i+1)}
+ rows.forEach(p=>{const T=[];
+  if(p.rkPts<=2&&p.ppp>=8)T.push('Anotador principal');
+  if(p.m3pp>=1)T.push('Amenaza de triple');
+  if(p.atl>=5&&p.pctTL>=60)T.push('Fiable en tiros libres');
+  if(p.pmpp>=8)T.push('Alto impacto (+/-)');
+  if(p.mpp>=25)T.push('Minutos clave');
+  if(p.fcpp>=4)T.push('Cargado de faltas');
+  p.tags=T;
+  const pts=[];pts.push(`${f1(p.ppp)} pts en ${f1(p.mpp)} min de media (${f1(p.p20)} por 20 min)`);
+  if(p.m3)pts.push(`${p.m3} triple(s) anotado(s)`);if(p.atl>=3)pts.push(`${Math.round(p.pctTL)}% en TL (${p.mtl}/${p.atl})`);
+  if(p.fcpp>=4)pts.push('acumula faltas: se le puede atacar para sacarlo del campo');
+  p.txt=pts.join(' · ')});}
+function render(){const tms=[...new Set(rows.map(p=>p.team))];const cur=$('tm').value;
+ $('tm').innerHTML='<option value="">Todos los equipos</option>'+tms.map(t=>`<option ${t===cur?'selected':''}>${esc(t)}</option>`).join('');
+ const v=view();
+ $('files').textContent=matches.length?`${[...new Set(matches.map(x=>x.match))].length} partido(s) cargado(s): `+[...new Set(matches.map(x=>x.match))].join(' | '):'';
+ const zero=rows.length&&rows.every(p=>!p.reb&&!p.ast&&!p.rec&&!p.per);
+ $('warn').innerHTML=zero?'<div class="note">Este formato no registra rebotes, asistencias, robos ni pérdidas (todo viene a 0), así que el informe se basa en puntos, triples, tiros libres, faltas, valoración y +/-.</div>':'';
+ const top=[...v].sort((a,b)=>b.idx-a.idx).slice(0,6);
+ $('top').innerHTML=top.map((p,i)=>`<div class="card"><span class="rk">#${i+1}</span> <h3 style="display:inline">${esc(p.name)}</h3><div class="t">${esc(p.team)} · dorsal ${esc(p.n)} · ${p.pj} PJ</div>
+ <div class="kp"><span><b>${f1(p.ppp)}</b>PTS</span><span><b>${f1(p.vpp)}</b>VAL</span><span><b>${f1(p.pmpp)}</b>+/-</span><span><b>${f1(p.mpp)}</b>MIN</span></div>
+ <div>${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div><div class="t" style="margin-top:8px">${esc(p.txt)}</div></div>`).join('')||'<p class="s">Sube un Excel para empezar.</p>';
+ const C=[['team','Equipo'],['name','Jugador'],['pj','PJ'],['mpp','MIN'],['ppp','PTS'],['p20','PTS/20\''],['m2','T2'],['m3','T3'],['pctTL','TL%'],['fcpp','FC'],['vpp','VAL'],['pmpp','+/-'],['idx','Índice']];
+ const s=[...v].sort((a,b)=>(typeof a[sortK]==='string'?a[sortK].localeCompare(b[sortK]):a[sortK]-b[sortK])*sortD);
+ $('tb').innerHTML='<tr>'+C.map(c=>`<th data-k="${c[0]}">${c[1]}${sortK===c[0]?(sortD>0?' ▲':' ▼'):''}</th>`).join('')+'</tr>'+s.map(p=>'<tr>'+C.map(c=>`<td>${typeof p[c[0]]==='number'&&!Number.isInteger(p[c[0]])?f1(p[c[0]]):esc(p[c[0]])}</td>`).join('')+'</tr>').join('');
+ $('tb').querySelectorAll('th').forEach(h=>h.onclick=()=>{const k=h.dataset.k;sortD=sortK===k?-sortD:-1;sortK=k;render()});
+ $('ex').disabled=!rows.length||!dl;$('ex').title=dl?'':'La descarga no está disponible en esta vista'}
+function view(){let v=$('tm').value?rows.filter(p=>p.team===$('tm').value):rows;const k=$('fm').value;return k?v.filter(p=>p[k]>=num($('fv').value)):v}
+function refresh(){aggregate();render()}
+$('tm').onchange=render;$('fm').onchange=render;$('fv').oninput=render;
+$('f').onchange=async e=>{const n=[];for(const f of e.target.files){try{n.push(...parse(XLSX.read(await f.arrayBuffer()),f.name))}catch(_){alert('No se pudo leer '+f.name)}}e.target.value='';if(n.length){await fetch('/api/stats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(n)});await load()}};
+$('rs').onclick=async()=>{if(confirm('¿Borrar todos los datos de la base de datos?')){await fetch('/api/stats',{method:'DELETE'});await load()}};
+$('ex').onclick=async()=>{const v=view();
+ const st=[...v].sort((a,b)=>b.idx-a.idx);const r=x=>Math.round(x*10)/10;
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(st.map(p=>({Equipo:p.team,Dorsal:p.n,Jugador:p.name,PJ:p.pj,'MIN/PJ':r(p.mpp),PTS:p.pts,'PTS/PJ':r(p.ppp),'PTS/20min':r(p.p20),T2:p.m2,'T3':p.m3,'TL':`${p.mtl}/${p.atl}`,'TL%':Math.round(p.pctTL),FC:p.fc,VAL:p.val,'VAL/PJ':r(p.vpp),'+/-':p.pm,'+/- por PJ':r(p.pmpp),Índice:r(p.idx)}))),'Estadísticas');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(st.slice(0,10).map((p,i)=>({'#':i+1,Equipo:p.team,Jugador:p.name,Índice:r(p.idx),Perfil:p.tags.join(', '),Informe:p.txt}))),'Informe');
+ const tt={};v.forEach(p=>{const t=tt[p.team]=tt[p.team]||{Equipo:p.team,Jugadores:0,PTS:0,T3:0,TL:0,FC:0};t.Jugadores++;t.PTS+=p.pts;t.T3+=p.m3;t.TL+=p.mtl;t.FC+=p.fc});
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(Object.values(tt)),'Equipos');
+ XLSX.writeFile(wb,'informe_baloncesto.xlsx')};
+async function load(){matches=await (await fetch('/api/stats')).json();refresh()}
+load();
+</script></body></html>
